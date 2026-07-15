@@ -1,0 +1,1082 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WAAP — PILGRIMS</title>
+<style>
+  html,body{margin:0;padding:0;background:#020406;overflow:hidden;height:100%;cursor:pointer}
+  canvas{display:block;position:fixed;inset:0}
+  .label{
+    position:fixed;left:50%;transform:translateX(-50%);
+    bottom:4vh;text-align:center;color:#c9b48a;
+    font-family:Georgia,"Times New Roman","Hiragino Mincho ProN","Yu Mincho",serif;
+    letter-spacing:.55em;font-size:clamp(10px,1.1vw,15px);
+    text-indent:.55em;opacity:.6;user-select:none;pointer-events:none;
+  }
+  .count{
+    position:fixed;right:3vw;top:3.5vh;color:#8fa3ad;
+    font-family:Georgia,serif;letter-spacing:.35em;
+    font-size:clamp(9px,.8vw,12px);opacity:.45;user-select:none;pointer-events:none;
+  }
+  .hint{
+    position:fixed;left:3vw;bottom:4vh;color:#4e5e66;
+    font-family:Georgia,serif;letter-spacing:.25em;
+    font-size:clamp(8px,.7vw,11px);opacity:.5;user-select:none;pointer-events:none;
+    transition:opacity 2s;
+  }
+  #addPhoto{
+    position:fixed;right:3vw;bottom:4vh;color:#8fa3ad;background:none;
+    border:1px solid rgba(143,163,173,.35);border-radius:2px;
+    font-family:Georgia,"Hiragino Mincho ProN",serif;letter-spacing:.2em;
+    font-size:clamp(9px,.8vw,12px);padding:.5em 1.1em;cursor:pointer;opacity:.55;
+  }
+  #addPhoto:hover{opacity:.9}
+  input[type=file]{display:none}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div class="label" id="label">WE&nbsp;ARE&nbsp;ALL&nbsp;PILGRIMS</div>
+<div class="count" id="count">PILGRIMS&nbsp;0000</div>
+<div class="hint" id="hint">DEMO&nbsp;·&nbsp;疑似データ&nbsp;·&nbsp;クリックで全画面</div>
+<button id="addPhoto">+&nbsp;写真</button>
+<input type="file" id="file" accept="image/*" multiple>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+"use strict";
+/* ================================================================
+   WAAP — PILGRIMS  v2
+   Scene 1: 出発地 → 平久保へのフライト軌跡(45秒)
+   Scene 2: 世界地図に国旗が立つアーカイブ(20秒) → ループ
+   ================================================================ */
+
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const countEl = document.getElementById('count');
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const ISHIGAKI = { lon: 124.29, lat: 24.60 };
+
+/* ---------- 疑似チェックインデータ [名称, lon, lat, 重み, 国] ---------- */
+const CITIES = [
+  ['TOKYO',      139.69, 35.68, 22,'JP'],
+  ['OSAKA',      135.50, 34.69, 14,'JP'],
+  ['NAGOYA',     136.91, 35.18,  7,'JP'],
+  ['FUKUOKA',    130.40, 33.59,  8,'JP'],
+  ['SAPPORO',    141.35, 43.06,  4,'JP'],
+  ['SENDAI',     140.87, 38.27,  3,'JP'],
+  ['HIROSHIMA',  132.46, 34.40,  3,'JP'],
+  ['NAHA',       127.68, 26.21,  6,'JP'],
+  ['TAIPEI',     121.56, 25.03, 10,'TW'],
+  ['KAOHSIUNG',  120.30, 22.62,  4,'TW'],
+  ['HONG KONG',  114.17, 22.32,  5,'HK'],
+  ['SEOUL',      126.98, 37.57,  4,'KR'],
+  ['SHANGHAI',   121.47, 31.23,  3,'CN'],
+  ['SINGAPORE',  103.82,  1.35,  3,'SG'],
+  ['BANGKOK',    100.50, 13.76,  2,'TH'],
+  ['SYDNEY',     151.21,-33.87,  1,'AU'],
+  ['HAWAII',    -157.86, 21.31,  1,'US'],
+  ['CALIFORNIA',-118.24, 34.05,  1,'US'],
+  ['NEW YORK',   -74.01, 40.71,  2,'US'],
+  ['LONDON',      -0.13, 51.51,  1,'GB'],
+  ['PARIS',        2.35, 48.86,  1,'FR'],
+  ['BERLIN',      13.40, 52.52,  1,'DE'],
+];
+const cityBag = [];
+CITIES.forEach((c,i)=>{ for(let k=0;k<c[3];k++) cityBag.push(i); });
+
+/* ---------- フォームの出発地 → 座標・国旗 ---------- */
+const CC_MAP={'日本':'JP','台湾':'TW','香港':'HK','韓国':'KR','中国':'CN','シンガポール':'SG','タイ':'TH','オーストラリア':'AU','アメリカ':'US','イギリス':'GB','フランス':'FR','ドイツ':'DE'};
+const PREF_COORDS={
+'北海道':[141.35,43.06],'青森県':[140.74,40.82],'岩手県':[141.15,39.70],'宮城県':[140.87,38.27],
+'秋田県':[140.10,39.72],'山形県':[140.36,38.24],'福島県':[140.47,37.75],'茨城県':[140.45,36.34],
+'栃木県':[139.88,36.57],'群馬県':[139.06,36.39],'埼玉県':[139.65,35.86],'千葉県':[140.12,35.61],
+'東京都':[139.69,35.69],'神奈川県':[139.64,35.45],'新潟県':[139.02,37.90],'富山県':[137.21,36.70],
+'石川県':[136.63,36.59],'福井県':[136.22,36.07],'山梨県':[138.57,35.66],'長野県':[138.18,36.65],
+'岐阜県':[136.72,35.39],'静岡県':[138.38,34.98],'愛知県':[136.91,35.18],'三重県':[136.51,34.73],
+'滋賀県':[135.87,35.00],'京都府':[135.76,35.02],'大阪府':[135.52,34.69],'兵庫県':[135.18,34.69],
+'奈良県':[135.83,34.69],'和歌山県':[135.17,34.23],'鳥取県':[134.24,35.50],'島根県':[133.05,35.47],
+'岡山県':[133.93,34.66],'広島県':[132.46,34.40],'山口県':[131.47,34.19],'徳島県':[134.56,34.07],
+'香川県':[134.04,34.34],'愛媛県':[132.77,33.84],'高知県':[133.53,33.56],'福岡県':[130.42,33.61],
+'佐賀県':[130.30,33.25],'長崎県':[129.87,32.74],'熊本県':[130.74,32.79],'大分県':[131.61,33.24],
+'宮崎県':[131.42,31.91],'鹿児島県':[130.56,31.56],'沖縄県':[127.68,26.21]};
+const COUNTRY_COORDS={
+'日本':[138.25,36.20],'台湾':[120.97,23.70],'香港':[114.17,22.32],'韓国':[126.98,37.57],
+'中国':[116.40,39.90],'シンガポール':[103.82,1.35],'タイ':[100.50,13.76],
+'オーストラリア':[151.21,-33.87],'アメリカ':[-98.00,38.50],'イギリス':[-1.50,52.50],
+'フランス':[2.35,48.86],'ドイツ':[10.45,51.16],'その他':[152.0,8.0],
+/* 台湾 */
+'台北':[121.56,25.03],'新北':[121.46,25.01],'桃園':[121.30,24.99],
+'台中':[120.68,24.14],'台南':[120.21,23.00],'高雄':[120.30,22.62],'その他(台湾)':[120.97,23.70],
+/* アメリカ */
+'カリフォルニア':[-119.42,36.78],'ニューヨーク':[-74.01,40.71],'ハワイ':[-157.86,21.31],
+'ワシントン州':[-120.74,47.40],'テキサス':[-99.00,31.00],'フロリダ':[-81.52,27.66],
+'イリノイ':[-89.00,40.00],'マサチューセッツ':[-71.80,42.30],'ネバダ':[-116.60,39.30],
+'ワシントンD.C.':[-77.04,38.90],'その他(アメリカ)':[-98.00,38.50],
+/* 中国 */
+'北京':[116.40,39.90],'上海':[121.47,31.23],'広東':[113.26,23.13],'浙江':[120.15,30.27],
+'江蘇':[118.78,32.06],'四川':[104.07,30.66],'福建':[119.30,26.08],'その他(中国)':[104.00,35.00],
+/* 韓国 */
+'ソウル':[126.98,37.57],'釜山':[129.08,35.18],'仁川':[126.71,37.46],
+'大邱':[128.60,35.87],'済州':[126.53,33.50],'その他(韓国)':[127.50,36.30],
+/* オーストラリア */
+'ニューサウスウェールズ':[151.21,-33.87],'ビクトリア':[144.96,-37.81],
+'クイーンズランド':[153.03,-27.47],'西オーストラリア':[115.86,-31.95],'その他(オーストラリア)':[134.00,-25.00],
+/* イギリス */
+'イングランド':[-0.13,51.51],'スコットランド':[-4.25,55.86],
+'ウェールズ':[-3.18,51.48],'北アイルランド':[-5.93,54.60]};
+function coordOf(origin,country){
+  if(PREF_COORDS[origin]) return PREF_COORDS[origin];
+  if(COUNTRY_COORDS[origin]) return COUNTRY_COORDS[origin];
+  if(COUNTRY_COORDS[country]) return COUNTRY_COORDS[country];
+  return [139.69,35.69];
+}
+
+/* ---------- 大陸ポリゴン(lon,lat / 粗) ---------- */
+const LAND = [
+[[-168,66],[-165,60],[-158,58],[-152,57],[-145,60],[-135,57],[-130,52],[-125,48],[-124,40],[-117,32],[-110,23],[-105,20],[-97,16],[-94,16],[-90,14],[-83,8],[-77,7],[-81,9],[-83,15],[-87,21],[-90,21],[-89,30],[-84,30],[-81,25],[-80,32],[-76,35],[-70,42],[-66,45],[-60,47],[-65,50],[-60,52],[-55,52],[-58,55],[-64,60],[-70,62],[-78,62],[-85,66],[-90,69],[-95,72],[-105,73],[-115,74],[-125,72],[-135,70],[-145,70],[-155,71],[-162,70]],
+[[-45,60],[-53,66],[-56,70],[-60,76],[-58,81],[-42,83],[-26,82],[-20,76],[-22,70],[-30,66],[-40,61]],
+[[-77,7],[-79,2],[-81,-4],[-77,-12],[-72,-18],[-70,-25],[-71,-32],[-73,-40],[-74,-48],[-72,-54],[-68,-55],[-65,-50],[-65,-42],[-62,-39],[-58,-34],[-52,-32],[-48,-26],[-41,-23],[-39,-16],[-35,-8],[-38,-4],[-44,-2],[-50,0],[-52,4],[-60,8],[-64,10],[-72,12]],
+[[-17,15],[-16,21],[-13,27],[-9,32],[-5,35],[0,36],[10,37],[11,33],[19,32],[25,32],[32,31],[34,28],[37,21],[40,15],[43,11],[48,11],[51,12],[46,5],[41,-1],[40,-7],[38,-14],[35,-20],[33,-26],[30,-31],[25,-34],[19,-35],[17,-33],[15,-27],[12,-18],[13,-12],[9,-6],[9,0],[6,4],[0,5],[-6,4],[-12,6],[-16,10]],
+[[44,-16],[47,-15],[50,-16],[49,-20],[47,-25],[45,-25],[43,-21]],
+[[-9,37],[-9,43],[-1,44],[-4,48],[0,49],[3,52],[7,54],[8,57],[11,55],[10,59],[17,61],[21,65],[26,70],[33,69],[40,67],[50,69],[60,70],[70,73],[80,73],[90,75],[100,77],[110,76],[120,73],[130,72],[140,72],[150,70],[160,70],[170,68],[178,65],[172,61],[163,60],[161,54],[156,50],[151,59],[142,54],[140,49],[135,44],[131,42],[128,40],[129,35],[126,34],[126,38],[124,39],[121,39],[117,38],[121,31],[120,27],[114,22],[108,20],[106,17],[109,13],[107,10],[104,9],[100,13],[98,9],[100,4],[103,1],[100,7],[97,16],[94,16],[90,22],[87,21],[85,19],[82,16],[80,13],[78,8],[75,11],[72,19],[68,23],[66,25],[61,25],[57,26],[54,26],[51,28],[48,30],[50,27],[55,26],[59,22],[57,17],[52,16],[45,13],[43,12],[39,21],[35,28],[34,31],[36,36],[30,36],[26,39],[23,38],[20,40],[18,42],[15,45],[12,44],[8,44],[5,43],[3,42],[0,40],[-1,37],[-5,36]],
+[[8,44],[12,45],[13,42],[16,40],[18,40],[16,38],[15,40],[12,42],[9,44]],
+[[-5,50],[0,51],[1,53],[-2,56],[-4,58],[-6,58],[-6,55],[-5,53]],
+[[140,43],[141,45.3],[143,44.2],[145.3,44.2],[144,43],[142,42.2]],
+[[141,41.3],[140,40.5],[140,38],[137,37],[136,36],[133,35.4],[131,34.3],[132,34.1],[134,34.2],[135.5,33.5],[137,34.7],[139,35],[140,35.4],[141,38],[141.6,40.4]],
+[[130,33.6],[129.8,31.2],[131.2,31.1],[131.9,33],[130.8,33.6]],
+[[132.8,33.9],[134.6,34.2],[134.3,33.4],[132.9,33.3]],
+[[120.1,25.1],[121.6,25.2],[121.2,22.2],[120.2,22.5]],
+[[120,18.4],[122,18.3],[122.3,14],[121.2,13.5],[120,16.2]],
+[[122,9],[125.3,9.6],[126.2,7.2],[124,5.8],[122,7.5]],
+[[95.3,5.5],[98,3.5],[102,-1],[106,-5.8],[104,-5.5],[100,0],[96,4]],
+[[105.5,-6.1],[110,-6.9],[114,-7.7],[112,-8.4],[107,-7.6],[105.3,-6.8]],
+[[109,1],[110,4.5],[114,5],[117.5,6.5],[119,1],[116,-3.5],[112,-3.4],[109.5,-1]],
+[[119,0.5],[121,1.2],[123,0.5],[122,-2],[121,-4],[120,-2.5],[119,-1]],
+[[131,-1],[135,-2],[139,-3],[144,-4],[148,-6.5],[146,-8.2],[141,-8.5],[137,-7.5],[132,-4]],
+[[114,-22],[114,-26],[115,-33],[118,-35],[124,-33],[129,-32],[132,-32],[135,-35],[138,-35.5],[140,-38],[145,-38.5],[150,-37.3],[153,-31],[153,-26],[151,-24],[148,-20],[146,-18],[142,-11],[138,-16],[135,-12],[132,-11],[129,-15],[126,-14],[122,-17],[118,-20]],
+[[173,-34.5],[176,-37.5],[178,-38],[175,-40.5],[173,-39.5]],
+[[172.7,-40.6],[174,-41.5],[172.8,-43.7],[169,-46.5],[166.8,-45.7],[170.5,-43],[172,-41.3]],
+];
+
+/* ---------- 投影 ---------- */
+let W=0,H=0,DPR=1;
+let MX=0,MY=0,MW=0,MH=0; /* 地図の描画領域(縦横比固定・中央配置) */
+const LAT_TOP=76, LAT_BOT=-58;
+const MAP_AR=360/(LAT_TOP-LAT_BOT); /* ≒2.69 */
+function proj(lon,lat){
+  return [MX+((lon+180)/360)*MW, MY+((LAT_TOP-lat)/(LAT_TOP-LAT_BOT))*MH];
+}
+function wrapX(x){
+  let r=(x-MX)%MW; if(r<0)r+=MW; return MX+r;
+}
+
+/* ---------- 陸ドットグリッド ---------- */
+function inPoly(lon,lat,poly){
+  let inside=false;
+  for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+    const xi=poly[i][0],yi=poly[i][1],xj=poly[j][0],yj=poly[j][1];
+    if(((yi>lat)!==(yj>lat)) && (lon < (xj-xi)*(lat-yi)/(yj-yi)+xi)) inside=true;
+  }
+  return inside;
+}
+let landDots=[];
+function buildDots(){
+  landDots=[];
+  const gap = Math.max(3.5, MW/260);
+  for(let x=MX+gap/2;x<MX+MW;x+=gap){
+    for(let y=MY+gap/2;y<MY+MH;y+=gap){
+      const lon=((x-MX)/MW)*360-180, lat=LAT_TOP-((y-MY)/MH)*(LAT_TOP-LAT_BOT);
+      for(let p=0;p<LAND.length;p++){
+        if(inPoly(lon,lat,LAND[p])){ landDots.push({x,y,ph:Math.random()*6.28}); break; }
+      }
+    }
+  }
+}
+
+/* ---------- 国旗(canvas描画・簡略版) ---------- */
+const flagCache = {};
+function makeFlag(cc){
+  const w=72,h=48;
+  const c=document.createElement('canvas'); c.width=w; c.height=h;
+  const g=c.getContext('2d');
+  const R=(x,y,ww,hh,col)=>{g.fillStyle=col;g.fillRect(x,y,ww,hh);};
+  switch(cc){
+    case 'JP': R(0,0,w,h,'#fff'); g.fillStyle='#bc002d'; g.beginPath(); g.arc(w/2,h/2,h*.3,0,7); g.fill(); break;
+    case 'TW': R(0,0,w,h,'#fe0000'); R(0,0,w/2,h/2,'#000095');
+      g.fillStyle='#fff'; g.beginPath(); g.arc(w/4,h/4,h*.13,0,7); g.fill();
+      g.strokeStyle='#fff'; g.lineWidth=2;
+      for(let i=0;i<12;i++){const a=i*Math.PI/6;g.beginPath();g.moveTo(w/4+Math.cos(a)*h*.15,h/4+Math.sin(a)*h*.15);g.lineTo(w/4+Math.cos(a)*h*.21,h/4+Math.sin(a)*h*.21);g.stroke();} break;
+    case 'HK': R(0,0,w,h,'#de2910'); g.fillStyle='#fff';
+      for(let i=0;i<5;i++){const a=i*6.28/5-1.57;g.beginPath();g.ellipse(w/2+Math.cos(a)*h*.14,h/2+Math.sin(a)*h*.14,h*.08,h*.15,a+1.57,0,7);g.fill();} break;
+    case 'KR': R(0,0,w,h,'#fff');
+      g.fillStyle='#cd2e3a'; g.beginPath(); g.arc(w/2,h/2,h*.24,Math.PI,0); g.fill();
+      g.fillStyle='#0047a0'; g.beginPath(); g.arc(w/2,h/2,h*.24,0,Math.PI); g.fill();
+      g.fillStyle='#000'; R(w*.1,h*.15,w*.12,h*.045,'#000'); R(w*.1,h*.25,w*.12,h*.045,'#000'); R(w*.1,h*.35,w*.12,h*.045,'#000');
+      R(w*.78,h*.6,w*.12,h*.045,'#000'); R(w*.78,h*.7,w*.12,h*.045,'#000'); R(w*.78,h*.8,w*.12,h*.045,'#000'); break;
+    case 'CN': R(0,0,w,h,'#de2910'); g.fillStyle='#ffde00';
+      star(g,w*.2,h*.28,h*.15); star(g,w*.38,h*.12,h*.05); star(g,w*.44,h*.24,h*.05); star(g,w*.44,h*.4,h*.05); star(g,w*.38,h*.52,h*.05); break;
+    case 'SG': R(0,0,w,h/2,'#ed2939'); R(0,h/2,w,h/2,'#fff');
+      g.fillStyle='#fff'; g.beginPath(); g.arc(w*.2,h*.25,h*.15,0,7); g.fill();
+      g.fillStyle='#ed2939'; g.beginPath(); g.arc(w*.24,h*.25,h*.13,0,7); g.fill();
+      g.fillStyle='#fff'; for(let i=0;i<5;i++){const a=i*6.28/5-1.57;star(g,w*.3+Math.cos(a)*h*.09,h*.25+Math.sin(a)*h*.09,h*.035);} break;
+    case 'TH': R(0,0,w,h,'#f4f5f8'); R(0,0,w,h/6,'#a51931'); R(0,h*5/6,w,h/6,'#a51931'); R(0,h/3,w,h/3,'#2d2a4a'); break;
+    case 'AU': R(0,0,w,h,'#00247d');
+      R(0,0,w/2,h/2,'#00247d'); uj(g,0,0,w/2,h/2);
+      g.fillStyle='#fff'; star(g,w*.25,h*.75,h*.09); star(g,w*.75,h*.2,h*.05); star(g,w*.85,h*.4,h*.05); star(g,w*.7,h*.55,h*.05); star(g,w*.9,h*.65,h*.05); break;
+    case 'US': R(0,0,w,h,'#fff');
+      for(let i=0;i<13;i+=2) R(0,i*h/13,w,h/13,'#b22234');
+      R(0,0,w*.4,h*7/13,'#3c3b6e');
+      g.fillStyle='#fff'; for(let r=0;r<4;r++)for(let cx=0;cx<5;cx++){g.beginPath();g.arc(w*.05+cx*w*.075,h*.06+r*h*.12,1.4,0,7);g.fill();} break;
+    case 'GB': R(0,0,w,h,'#012169'); uj(g,0,0,w,h); break;
+    case 'FR': R(0,0,w/3,h,'#0055a4'); R(w/3,0,w/3,h,'#fff'); R(w*2/3,0,w/3,h,'#ef4135'); break;
+    case 'DE': R(0,0,w,h/3,'#000'); R(0,h/3,w,h/3,'#dd0000'); R(0,h*2/3,w,h/3,'#ffce00'); break;
+    default: R(0,0,w,h,'#888');
+  }
+  g.strokeStyle='rgba(0,0,0,.35)'; g.lineWidth=2; g.strokeRect(1,1,w-2,h-2);
+  return c;
+}
+function star(g,x,y,r){
+  g.beginPath();
+  for(let i=0;i<5;i++){
+    const a=-Math.PI/2+i*6.28/5, b=a+6.28/10;
+    g.lineTo(x+Math.cos(a)*r,y+Math.sin(a)*r);
+    g.lineTo(x+Math.cos(b)*r*.42,y+Math.sin(b)*r*.42);
+  }
+  g.closePath(); g.fill();
+}
+function uj(g,x,y,w,h){ /* union jack simplified */
+  g.strokeStyle='#fff'; g.lineWidth=h*.22;
+  g.beginPath(); g.moveTo(x,y); g.lineTo(x+w,y+h); g.moveTo(x+w,y); g.lineTo(x,y+h); g.stroke();
+  g.strokeStyle='#c8102e'; g.lineWidth=h*.09;
+  g.beginPath(); g.moveTo(x,y); g.lineTo(x+w,y+h); g.moveTo(x+w,y); g.lineTo(x,y+h); g.stroke();
+  g.strokeStyle='#fff'; g.lineWidth=h*.3;
+  g.beginPath(); g.moveTo(x+w/2,y); g.lineTo(x+w/2,y+h); g.moveTo(x,y+h/2); g.lineTo(x+w,y+h/2); g.stroke();
+  g.strokeStyle='#c8102e'; g.lineWidth=h*.16;
+  g.beginPath(); g.moveTo(x+w/2,y); g.lineTo(x+w/2,y+h); g.moveTo(x,y+h/2); g.lineTo(x+w,y+h/2); g.stroke();
+}
+function getFlag(cc){ if(!flagCache[cc]) flagCache[cc]=makeFlag(cc); return flagCache[cc]; }
+
+/* なびく旗の描画(縦スライスをsinでずらす) */
+function drawWavyFlag(img,x,y,fw,fh,t){
+  const slices=12, sw=img.width/slices;
+  for(let i=0;i<slices;i++){
+    const k=i/slices;
+    const dy = reduceMotion ? 0 : Math.sin(t*2.4 + k*4)*fh*.09*k;
+    ctx.drawImage(img, i*sw,0,sw,img.height, x+k*fw, y+dy, fw/slices+.6, fh);
+  }
+}
+
+/* ---------- 状態 ---------- */
+let pilgrims=[];          // {x,y,born}(シーン1の琥珀の星)
+let counts={};            // cityIdx -> 人数(シーン2の旗)
+let flights=[];
+let trail=[];
+let ripples=[];
+let total=0;
+
+function fmtCount(n){ return 'PILGRIMS\u00A0'+String(n).padStart(4,'0'); }
+function addPilgrim(cityIdx, kind){
+  const c=CITIES[cityIdx];
+  addPilgrimAt(c[1],c[2],kind||'guest',c[0],c[4]);
+}
+function addPilgrimAt(lon,lat,kind,origin,cc){
+  const [px,py]=proj(lon,lat);
+  pilgrims.push({x:wrapX(px+(Math.random()-.5)*8), y:py+(Math.random()-.5)*8, born:performance.now(), kind});
+  if(!counts[origin]) counts[origin]={cc:cc||'XX',lon,lat,n:0};
+  counts[origin].n++;
+  total++;
+  countEl.textContent=fmtCount(total);
+}
+function unwrapDest(lon0){
+  let d=ISHIGAKI.lon;
+  while(d-lon0>180)d-=360;
+  while(d-lon0<-180)d+=360;
+  return d;
+}
+function spawnFlightAt(lon,lat,kind,label,no,cc){
+  const lon0=lon+(Math.random()-.5)*.8, lat0=lat+(Math.random()-.5)*.8;
+  const dist=Math.hypot(unwrapDest(lon0)-lon0, ISHIGAKI.lat-lat0);
+  flights.push({label,cc:cc||'XX',kind,no,olon:lon,olat:lat,
+    lon0,lat0,lonU:unwrapDest(lon0),tStart:performance.now(),
+    dur:2600+dist*45, lift:Math.min(20,3+dist*.16)});
+}
+function spawnFlight(){ /* 疑似データ用 */
+  const idx=cityBag[Math.floor(Math.random()*cityBag.length)];
+  const c=CITIES[idx];
+  spawnFlightAt(c[1],c[2], Math.random()<.22?'visitor':'guest',
+                c[0], total+flights.length+1, c[4]);
+}
+/* 着地アナウンス(「PILGRIM No.0047 — TOKYO」) */
+let arrivals=[]; // {text,t}
+
+/* ---------- モード(URLパラメータ ?mode=) ---------- */
+/* reception: フライト重視(チェックイン体験) / bar: 文字最小のアンビエント /
+   restaurant: 参加招待重視 / 無指定: フル構成 */
+const MODE=(new URLSearchParams(location.search).get('mode')||'default');
+const MINIMAL=(MODE==='bar');
+
+/* ---------- 実データ接続(GASフィード) ---------- */
+const FEED_URL='https://script.google.com/macros/s/AKfycbyR15p17qd1Qq-ApAJo9Zoy7TOzZNAtHJalxbTu-Yuggs51xgBrnoE4eMIYpKK9q3_PPg/exec';
+const USE_FEED = !(new URLSearchParams(location.search).get('demo'));
+
+/* 参加フォームの本物のQRを生成(オフライン時はダミーに自動フォールバック) */
+const FORM_URL = FEED_URL + '?p=form';
+let qrCanvas = null;
+try{
+  if(typeof QRCode !== 'undefined'){
+    const qdiv=document.createElement('div');
+    new QRCode(qdiv,{text:FORM_URL, width:512, height:512,
+                     correctLevel:QRCode.CorrectLevel.M});
+    setTimeout(()=>{ qrCanvas=qdiv.querySelector('canvas'); }, 400);
+  }
+}catch(e){}
+
+/* ---------- シーン管理(時計基準・全端末同期) ---------- */
+const SCENE_SETS={
+  default:    [['flight',45000],['memory',20000],['map',20000],['join',14000]],
+  reception:  [['flight',60000],['map',20000]],
+  bar:        [['flight',600000]],
+  restaurant: [['flight',30000],['memory',20000],['map',18000],['join',18000]]
+};
+const SCENES=SCENE_SETS[MODE]||SCENE_SETS.default;
+const CYCLE=SCENES.reduce((s,x)=>s+x[1],0);
+let mode='flight', curEl=0, curDur=SCENES[0][1];
+
+/* ---------- 描画 ---------- */
+const easeIO=t=>t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
+
+function drawIshigaki(now,alpha){
+  const [gx,gy]=proj(ISHIGAKI.lon,ISHIGAKI.lat);
+  const pulse=reduceMotion?.6:.5+.5*Math.sin(now*.0016);
+  const grd=ctx.createRadialGradient(gx,gy,0,gx,gy,26+10*pulse);
+  grd.addColorStop(0,`rgba(255,214,150,${.85*alpha})`);
+  grd.addColorStop(.25,`rgba(240,180,110,${.35*alpha})`);
+  grd.addColorStop(1,'rgba(240,180,110,0)');
+  ctx.fillStyle=grd;
+  ctx.beginPath(); ctx.arc(gx,gy,40,0,7); ctx.fill();
+  ctx.beginPath(); ctx.arc(gx,gy,2.4,0,7);
+  ctx.fillStyle=`rgba(255,233,196,${alpha})`; ctx.fill();
+  ctx.font=`${Math.max(9,W*.006)}px Georgia, serif`;
+  ctx.fillStyle=`rgba(201,180,138,${.6*alpha})`;
+  if(gx > MX+MW*.62){
+    ctx.textAlign='right';
+    ctx.fillText('I S H I G A K I  ·  H I R A K U B O', gx-16, gy+4);
+  }else{
+    ctx.textAlign='left';
+    ctx.fillText('I S H I G A K I  ·  H I R A K U B O', gx+16, gy+4);
+  }
+  return [gx,gy];
+}
+
+function drawFlightScene(now,alpha){
+  ctx.globalAlpha=alpha;
+  /* 海岸線(薄い輪郭で世界地図であることを明示) */
+  ctx.strokeStyle=`rgba(120,160,178,${.20*alpha})`;
+  ctx.lineWidth=1;
+  for(const poly of LAND){
+    ctx.beginPath();
+    poly.forEach((p,i)=>{
+      const [x,y]=proj(p[0],p[1]);
+      i?ctx.lineTo(x,y):ctx.moveTo(x,y);
+    });
+    ctx.closePath(); ctx.stroke();
+  }
+  /* 呼吸する陸ドット(明るめ) */
+  ctx.fillStyle='#33566a';
+  for(const d of landDots){
+    const a=reduceMotion?.7:.5+.3*Math.sin(now*.0006+d.ph);
+    ctx.globalAlpha=a*alpha;
+    ctx.fillRect(d.x-1,d.y-1,2,2);
+  }
+  ctx.globalAlpha=alpha;
+  /* 巡礼者の星(琥珀=宿泊/銀=参加) */
+  pilgrims=pilgrims.filter(p=>!p.die || now<p.die);
+  for(const p of pilgrims){
+    const age=(now-p.born)/1000, fade=Math.min(1,age/2);
+    const tw=reduceMotion?1:.8+.2*Math.sin(now*.0012+p.x);
+    const col = p.kind==='visitor' ? '178,198,216' : '232,184,109';
+    ctx.beginPath(); ctx.arc(p.x,p.y,1.9,0,7);
+    ctx.fillStyle=`rgba(${col},${.75*fade*tw*alpha})`; ctx.fill();
+    ctx.beginPath(); ctx.arc(p.x,p.y,4.5,0,7);
+    ctx.fillStyle=`rgba(${col},${.10*fade*alpha})`; ctx.fill();
+  }
+  const [gx,gy]=drawIshigaki(now,alpha);
+  /* 波紋 */
+  ripples=ripples.filter(r=>now-r.t<2200);
+  for(const r of ripples){
+    const k=(now-r.t)/2200;
+    ctx.beginPath(); ctx.arc(gx,gy,4+k*44,0,7);
+    ctx.strokeStyle=`rgba(240,190,120,${.5*(1-k)*alpha})`;
+    ctx.lineWidth=1.2; ctx.stroke();
+  }
+  /* フライト */
+  const done=[];
+  for(const f of flights){
+    const t=Math.min(1,(now-f.tStart)/f.dur), e=easeIO(t);
+    const lon=f.lon0+(f.lonU-f.lon0)*e;
+    const lat=f.lat0+(ISHIGAKI.lat-f.lat0)*e+Math.sin(Math.PI*e)*f.lift;
+    const [rx,y]=proj(lon,lat), x=wrapX(rx);
+    trail.push({x,y,life:1});
+    const g2=ctx.createRadialGradient(x,y,0,x,y,9);
+    g2.addColorStop(0,`rgba(255,244,220,${.95*alpha})`);
+    g2.addColorStop(1,'rgba(255,244,220,0)');
+    ctx.fillStyle=g2; ctx.beginPath(); ctx.arc(x,y,9,0,7); ctx.fill();
+    /* 出発地ラベル(彗星に随伴 / BARモードでは非表示) */
+    if(!MINIMAL && t>.08 && t<.92){
+      ctx.font=`${Math.max(9,W*.0058)}px Georgia, serif`;
+      ctx.fillStyle=`rgba(200,214,224,${.65*alpha*Math.sin(Math.PI*t)})`;
+      ctx.textAlign='left';
+      ctx.fillText(f.label, x+12, y-8);
+    }
+    if(t>=1){
+      done.push(f); ripples.push({t:now});
+      if(f.no!=null){
+        addPilgrimAt(f.olon,f.olat,f.kind,f.label,f.cc);
+        arrivals.push({text:`PILGRIM  No.${String(f.no).padStart(4,'0')}  —  ${f.label}`, t:now});
+      }else{
+        /* 残響:一時的な星として灯り、静かに消える(集計には加算しない) */
+        const [px,py]=proj(f.olon,f.olat);
+        pilgrims.push({x:wrapX(px+(Math.random()-.5)*8), y:py+(Math.random()-.5)*8,
+                       born:performance.now(), kind:f.kind,
+                       die:performance.now()+90000});
+      }
+    }
+  }
+  flights=flights.filter(f=>!done.includes(f));
+  /* 尾 */
+  for(const p of trail){
+    p.life-=reduceMotion?.04:.012;
+    if(p.life>0){
+      ctx.beginPath(); ctx.arc(p.x,p.y,1.2+p.life*1.2,0,7);
+      ctx.fillStyle=`rgba(190,220,235,${.55*p.life*alpha})`; ctx.fill();
+    }
+  }
+  trail=trail.filter(p=>p.life>0);
+  /* 着地アナウンス(BARモードでは非表示) */
+  arrivals=arrivals.filter(a2=>now-a2.t<5200);
+  let ai=0;
+  if(!MINIMAL) for(const a2 of arrivals){
+    const k=(now-a2.t)/5200;
+    const fadeA=k<.12?k/.12:(k>.8?(1-k)/.2:1);
+    ctx.font=`${Math.max(10,W*.0072)}px Georgia, serif`;
+    ctx.fillStyle=`rgba(232,196,130,${.85*fadeA*alpha})`;
+    if(gx > MX+MW*.62){
+      ctx.textAlign='right';
+      ctx.fillText(a2.text, gx-16, gy+26+ai*20);
+    }else{
+      ctx.textAlign='left';
+      ctx.fillText(a2.text, gx+16, gy+26+ai*20);
+    }
+    ai++;
+  }
+  ctx.textAlign='left';
+  ctx.globalAlpha=1;
+}
+
+function drawMapScene(now,alpha,riseT){
+  ctx.globalAlpha=alpha;
+  /* 経緯線 */
+  ctx.strokeStyle=`rgba(120,160,175,${.06*alpha})`;
+  ctx.lineWidth=1;
+  for(let lon=-150;lon<=180;lon+=30){
+    const [x]=proj(lon,0);
+    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke();
+  }
+  for(let lat=-40;lat<=60;lat+=20){
+    const [,y]=proj(0,lat);
+    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
+  }
+  /* 塗りの大陸 */
+  for(const poly of LAND){
+    ctx.beginPath();
+    poly.forEach((p,i)=>{
+      const [x,y]=proj(p[0],p[1]);
+      i?ctx.lineTo(x,y):ctx.moveTo(x,y);
+    });
+    ctx.closePath();
+    ctx.fillStyle=`rgba(22,50,62,${alpha})`;
+    ctx.fill();
+    ctx.strokeStyle=`rgba(130,170,185,${.3*alpha})`;
+    ctx.lineWidth=1;
+    ctx.stroke();
+  }
+  const [gx,gy]=drawIshigaki(now,alpha);
+  /* 旗と平久保を結ぶ細い糸 */
+  const entries=Object.entries(counts).map(([k,v])=>({origin:k, ...v}));
+  for(const en of entries){
+    const [px,py]=proj(en.lon,en.lat);
+    ctx.beginPath();
+    ctx.moveTo(px,py);
+    ctx.quadraticCurveTo((px+gx)/2,(py+gy)/2-40,gx,gy);
+    ctx.strokeStyle=`rgba(232,184,109,${.10*alpha})`;
+    ctx.lineWidth=1;
+    ctx.stroke();
+  }
+  /* 国旗 */
+  ctx.font=`${Math.max(9,W*.0062)}px Georgia, serif`;
+  entries.sort((a,b)=>a.lat-b.lat); // 北から描画
+  let alt=0;
+  for(const en of entries){
+    const [px,py]=proj(en.lon,en.lat);
+    const rise=Math.min(1,Math.max(0,(riseT-alt*.06)*2.2));
+    const er=1-Math.pow(1-rise,3);
+    const poleH=(26+(alt%3)*13)*er;
+    const fw=Math.min(30,17+en.n*1.1), fh=fw*2/3;
+    /* ポール */
+    ctx.strokeStyle=`rgba(220,225,230,${.75*alpha*er})`;
+    ctx.lineWidth=1.4;
+    ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(px,py-poleH); ctx.stroke();
+    ctx.beginPath(); ctx.arc(px,py,2,0,7);
+    ctx.fillStyle=`rgba(232,184,109,${.9*alpha*er})`; ctx.fill();
+    /* 旗 */
+    if(er>.15){
+      ctx.save();
+      ctx.globalAlpha=alpha*er;
+      drawWavyFlag(getFlag(en.cc),px+1,py-poleH,fw,fh,now*.001+alt);
+      ctx.restore();
+      ctx.globalAlpha=alpha;
+    }
+    /* 地名 × 人数 */
+    ctx.fillStyle=`rgba(190,205,214,${.8*alpha*er})`;
+    ctx.textAlign='left';
+    ctx.fillText(`${en.origin}  ×${en.n}`, px+fw+6, py-poleH+fh*.75);
+    alt++;
+  }
+  ctx.globalAlpha=1;
+}
+
+/* ---------- 参加招待シーン ---------- */
+function drawFakeQR(x,y,s,alpha){
+  /* デモ用ダミーQR(本番で実QRに差し替え) */
+  ctx.fillStyle=`rgba(245,246,248,${alpha})`;
+  ctx.fillRect(x,y,s,s);
+  const m=s/25;
+  ctx.fillStyle=`rgba(20,26,32,${alpha})`;
+  /* ファインダー3隅 */
+  const fin=(fx,fy)=>{
+    ctx.fillRect(fx,fy,m*7,m*7);
+    ctx.fillStyle=`rgba(245,246,248,${alpha})`;
+    ctx.fillRect(fx+m,fy+m,m*5,m*5);
+    ctx.fillStyle=`rgba(20,26,32,${alpha})`;
+    ctx.fillRect(fx+m*2,fy+m*2,m*3,m*3);
+  };
+  fin(x+m*1.5,y+m*1.5); fin(x+s-m*8.5,y+m*1.5); fin(x+m*1.5,y+s-m*8.5);
+  /* 疑似モジュール(決定的パターン) */
+  for(let i=0;i<15;i++)for(let j=0;j<15;j++){
+    if(((i*7+j*13+i*j)%5)<2){
+      ctx.fillRect(x+m*(5+i*1.0), y+m*(5+j*1.0), m*.85, m*.85);
+    }
+  }
+}
+
+function drawJoinScene(now,alpha){
+  ctx.globalAlpha=alpha;
+  /* 背景:静かな地図 */
+  ctx.fillStyle='#2a4757';
+  for(const d of landDots){
+    ctx.globalAlpha=.12*alpha;
+    ctx.fillRect(d.x-1,d.y-1,2,2);
+  }
+  ctx.globalAlpha=alpha;
+  const [gx,gy]=proj(ISHIGAKI.lon,ISHIGAKI.lat);
+  const grd=ctx.createRadialGradient(gx,gy,0,gx,gy,20);
+  grd.addColorStop(0,`rgba(255,214,150,${.5*alpha})`);
+  grd.addColorStop(1,'rgba(255,214,150,0)');
+  ctx.fillStyle=grd;
+  ctx.beginPath(); ctx.arc(gx,gy,22,0,7); ctx.fill();
+
+  const cx=W/2;
+  const base=Math.min(W,H);
+  ctx.textAlign='center';
+
+  /* 見出し */
+  ctx.font=`${base*.045}px Georgia,"Hiragino Mincho ProN","Yu Mincho",serif`;
+  ctx.fillStyle=`rgba(224,214,192,${.92*alpha})`;
+  ctx.fillText('あなたの旅も、この星座に。', cx, H*.27);
+  ctx.font=`italic ${base*.023}px Georgia,serif`;
+  ctx.fillStyle=`rgba(182,166,132,${.82*alpha})`;
+  ctx.fillText('Add your journey to the constellation.', cx, H*.325);
+
+  ctx.font=`${base*.019}px Georgia,"Hiragino Mincho ProN","Yu Mincho",serif`;
+  ctx.fillStyle=`rgba(170,185,196,${.85*alpha})`;
+  ctx.fillText('ご宿泊でない方も、出発地を教えてください', cx, H*.385);
+  ctx.font=`italic ${base*.016}px Georgia,serif`;
+  ctx.fillStyle=`rgba(120,138,150,${.8*alpha})`;
+  ctx.fillText('Scan to share where your journey began', cx, H*.42);
+
+  /* QR */
+  const qs=base*.24;
+  if(qrCanvas){
+    /* 本物のQR(スキャンで参加フォームが開く) */
+    const pad=qs*.07;
+    ctx.fillStyle=`rgba(245,246,248,${alpha})`;
+    ctx.fillRect(cx-qs/2, H*.46, qs, qs);
+    ctx.globalAlpha=alpha;
+    ctx.drawImage(qrCanvas, cx-qs/2+pad, H*.46+pad, qs-pad*2, qs-pad*2);
+    ctx.font=`${base*.014}px Georgia,serif`;
+    ctx.fillStyle=`rgba(150,165,176,${.8*alpha})`;
+    ctx.textAlign='center';
+    ctx.fillText('スマートフォンのカメラでスキャン / Scan with your phone', cx, H*.46+qs+base*.03);
+  }else{
+    drawFakeQR(cx-qs/2, H*.46, qs, alpha);
+    ctx.font=`${base*.014}px Georgia,serif`;
+    ctx.fillStyle=`rgba(120,135,146,${.7*alpha})`;
+    ctx.textAlign='center';
+    ctx.fillText('※ オフラインのためQRを表示できません', cx, H*.46+qs+base*.03);
+  }
+
+  /* 凡例 */
+  const ly=H*.46+qs+base*.07;
+  ctx.font=`${base*.017}px Georgia,"Hiragino Mincho ProN",serif`;
+  ctx.beginPath(); ctx.arc(cx-base*.17, ly-base*.006, 3.2,0,7);
+  ctx.fillStyle=`rgba(232,184,109,${.9*alpha})`; ctx.fill();
+  ctx.fillStyle=`rgba(190,200,208,${.85*alpha})`;
+  ctx.textAlign='left';
+  ctx.fillText('ご宿泊の巡礼者 / Staying guest', cx-base*.15, ly);
+  ctx.beginPath(); ctx.arc(cx+base*.055, ly-base*.006, 3.2,0,7);
+  ctx.fillStyle=`rgba(178,198,216,${.9*alpha})`; ctx.fill();
+  ctx.fillStyle=`rgba(190,200,208,${.85*alpha})`;
+  ctx.fillText('旅の参加者 / Traveler', cx+base*.075, ly);
+
+  ctx.textAlign='left';
+  ctx.globalAlpha=1;
+}
+
+/* ---------- MEMORIES:写真→粒子演出 ---------- */
+let photos=[];   /* 各要素 = その写真の粒子配列 */
+let mripples=[];
+
+async function addPhotoFile(file){
+  let bmp;
+  try{ bmp=await createImageBitmap(file,{imageOrientation:'from-image'}); }
+  catch(e){
+    bmp=await new Promise((res,rej)=>{
+      const img=new Image();
+      img.onload=()=>res(img); img.onerror=rej;
+      img.src=URL.createObjectURL(file);
+    });
+  }
+  photos.push(buildPhotoParticles(bmp));
+}
+
+function buildPhotoParticles(img){
+  const iw=img.width, ih=img.height, ar=iw/ih;
+  const maxP=reduceMotion?4000:12000;
+  let cols=Math.round(Math.sqrt(maxP*ar));
+  let rows=Math.round(cols/ar);
+  const oc=document.createElement('canvas');
+  oc.width=cols; oc.height=rows;
+  const og=oc.getContext('2d');
+  og.drawImage(img,0,0,cols,rows);
+  const data=og.getImageData(0,0,cols,rows).data;
+
+  const dispW=Math.min(W*.62, H*.70*ar), dispH=dispW/ar;
+  const ox=W*.40-dispW/2, oy=H*.5-dispH/2;
+  const cell=dispW/cols; /* 1粒あたりのマス目 */
+  const [gx,gy]=proj(ISHIGAKI.lon,ISHIGAKI.lat);
+
+  const ps=[];
+  for(let y=0;y<rows;y++)for(let x=0;x<cols;x++){
+    const i=(y*cols+x)*4;
+    const r0=data[i], g0=data[i+1], b0=data[i+2];
+    const L=(r0*.299+g0*.587+b0*.114)/255;
+    if(L<.04)continue;
+    const tx=ox+(x+.5)/cols*dispW, ty=oy+(y+.5)/rows*dispH;
+    const k=Math.pow(L,.9);
+    /* 写真の色を8割残し、琥珀を2割まとわせる+わずかに明るく */
+    const mix=.20, lift=1.12;
+    const r=Math.min(255,Math.round((r0*(1-mix)+232*mix)*lift));
+    const g=Math.min(255,Math.round((g0*(1-mix)+184*mix)*lift));
+    const b=Math.min(255,Math.round((b0*(1-mix)+109*mix)*lift));
+    /* 出現起点=石垣の着地点(そこから花開く) */
+    const a0=Math.random()*6.28, rad=Math.random()*12;
+    ps.push({
+      tx,ty,
+      sx:gx+Math.cos(a0)*rad, sy:gy+Math.sin(a0)*rad,
+      col:`${r},${g},${b}`,
+      /* ハーフトーン:明るいほどマス目いっぱいに広がる粒 */
+      size:cell*.46*(.30+.70*k), alpha:.55+.45*k,
+      jit:Math.random()*6.28,
+      delay:Math.random()*.45,
+      starIdx:Math.floor(Math.random()*99991), /* 変換先の星(剰余で割当) */
+      fade:Math.random()<.62,                  /* 6割は道中で光になって消える */
+      cpx:(tx+gx)/2+(Math.random()-.5)*W*.15,
+      cpy:(ty+gy)/2-(H*.10+Math.random()*H*.14)
+    });
+  }
+  return ps;
+}
+
+const easeOutC=t=>1-Math.pow(1-t,3);
+const easeInC=t=>t*t*t;
+
+function drawMemoryScene(now,alpha,el,dur){
+  ctx.globalAlpha=alpha;
+  const [gx,gy]=proj(ISHIGAKI.lon,ISHIGAKI.lat);
+
+  /* 平久保の灯 */
+  const pulse=reduceMotion?.6:.5+.5*Math.sin(now*.0016);
+  const grd=ctx.createRadialGradient(gx,gy,0,gx,gy,22+8*pulse);
+  grd.addColorStop(0,`rgba(255,214,150,${.85*alpha})`);
+  grd.addColorStop(.3,`rgba(240,180,110,${.32*alpha})`);
+  grd.addColorStop(1,'rgba(240,180,110,0)');
+  ctx.fillStyle=grd;
+  ctx.beginPath();ctx.arc(gx,gy,36,0,7);ctx.fill();
+  ctx.beginPath();ctx.arc(gx,gy,2.2,0,7);
+  ctx.fillStyle=`rgba(255,233,196,${alpha})`;ctx.fill();
+
+  /* 実データ:承認済み写真キューから1件、なければ手動追加写真でデモ再生 */
+  const cyc=Math.floor(Date.now()/CYCLE);
+  if(cyc!==lastMemCyc){
+    lastMemCyc=cyc;
+    if(memoryQueue.length){
+      /* 新着は最優先で再生し、ローテーション入り */
+      activeMemory=memoryQueue.shift();
+      recentMemories.push(activeMemory);
+      while(recentMemories.length>MEMORY_KEEP) recentMemories.shift();
+    }else if(recentMemories.length){
+      /* 新着がない間は直近の写真が入れ替わりで流れ続ける */
+      activeMemory=recentMemories[cyc%recentMemories.length];
+    }else{
+      activeMemory=null;
+    }
+  }
+  let ps=null, memOrigin='', memNo=0, memLon=0, memLat=0;
+  if(activeMemory){
+    ps=activeMemory.ps; memOrigin=activeMemory.origin; memNo=activeMemory.no;
+    const cd=coordOf(memOrigin, activeMemory.country||'');
+    memLon=cd[0]; memLat=cd[1];
+  } else if(photos.length){
+    ps=photos[cyc%photos.length];
+    const oc2=CITIES[cityBag[(cyc*7919)%cityBag.length]];
+    memOrigin=oc2[0]; memNo=(cyc*13)%900+47; memLon=oc2[1]; memLat=oc2[2];
+  }
+  if(!ps){
+    ctx.textAlign='center';
+    ctx.font=`${Math.min(W,H)*.030}px Georgia,"Hiragino Mincho ProN","Yu Mincho",serif`;
+    ctx.fillStyle=`rgba(224,214,192,${.85*alpha})`;
+    ctx.fillText('お客様の石垣の写真が届くと、ここに灯ります', W/2, H*.47);
+    ctx.font=`italic ${Math.min(W,H)*.018}px Georgia,serif`;
+    ctx.fillStyle=`rgba(140,155,166,${.75*alpha})`;
+    ctx.fillText('Your photos of Ishigaki will light up here', W/2, H*.52);
+    if(!USE_FEED){
+      ctx.font=`${Math.min(W,H)*.016}px Georgia,"Hiragino Mincho ProN",serif`;
+      ctx.fillStyle=`rgba(120,135,146,${.7*alpha})`;
+      ctx.fillText('(デモ:右下の「+ 写真」から追加できます)', W/2, H*.54);
+    }
+    ctx.textAlign='left';
+    ctx.globalAlpha=1;
+    return;
+  }
+  const demoNo='PILGRIM  No.'+String(memNo).padStart(4,'0')+'  —  '+memOrigin;
+
+  /* タイムライン:光が飛来 → 着地から写真が花開く → 静止 → 石垣へ吸収 → 閃光 → 一文 */
+  const FL=3400, A=2400, D=4200, F=2200, M=2000;
+  const HOLD=Math.max(1800, dur-FL-A-D-F-M-400);
+
+  const numberLabel=(a2)=>{
+    /* 粒子写真の下に巡礼者ナンバー(お客様が自分のものと分かる) */
+    ctx.textAlign='center';
+    ctx.font=`${Math.max(11,Math.min(W,H)*.024)}px Georgia, serif`;
+    ctx.fillStyle=`rgba(232,196,130,${.9*a2*alpha})`;
+    ctx.fillText(demoNo, W*.40, H*.88);
+    ctx.textAlign='left';
+  };
+
+  if(el<FL){
+    /* 出発地から光が飛来 */
+    const t=Math.min(1,el/FL);
+    const lon0=memLon, lat0=memLat, lonU=unwrapDest(lon0);
+    const lift=Math.min(20,3+Math.hypot(lonU-lon0,ISHIGAKI.lat-lat0)*.16);
+    const pos=(tt)=>{
+      const ee=easeIO(tt);
+      const lon=lon0+(lonU-lon0)*ee;
+      const lat=lat0+(ISHIGAKI.lat-lat0)*ee+Math.sin(Math.PI*ee)*lift;
+      const [rx,yy]=proj(lon,lat);
+      return [wrapX(rx),yy];
+    };
+    for(let k2=13;k2>=0;k2--){
+      const tt=t-k2*.014;
+      if(tt<=0)continue;
+      const [x,y]=pos(tt);
+      ctx.beginPath();ctx.arc(x,y,.6+1.6*(1-k2/14),0,7);
+      ctx.fillStyle=`rgba(190,220,235,${.55*(1-k2/14)*alpha})`;ctx.fill();
+    }
+    const [hx,hy]=pos(t);
+    const g2=ctx.createRadialGradient(hx,hy,0,hx,hy,9);
+    g2.addColorStop(0,`rgba(255,244,220,${.95*alpha})`);
+    g2.addColorStop(1,'rgba(255,244,220,0)');
+    ctx.fillStyle=g2;ctx.beginPath();ctx.arc(hx,hy,9,0,7);ctx.fill();
+    if(t>.06&&t<.94){
+      ctx.font=`${Math.max(9,W*.0058)}px Georgia,serif`;
+      ctx.fillStyle=`rgba(200,214,224,${.65*Math.sin(Math.PI*t)*alpha})`;
+      ctx.fillText(memOrigin, hx+12, hy-8);
+    }
+  }
+  else if(el<FL+A){
+    /* 着地点から6,000粒が花開き、写真になる */
+    const t=(el-FL)/A;
+    ctx.beginPath();ctx.arc(gx,gy,t*70,0,7);
+    ctx.strokeStyle=`rgba(240,190,120,${.45*(1-t)*alpha})`;
+    ctx.lineWidth=1.2;ctx.stroke();
+    for(const p of ps){
+      const e=easeOutC(Math.min(1,Math.max(0,t*1.3-p.delay*.3)));
+      drawMP(p, p.sx+(p.tx-p.sx)*e, p.sy+(p.ty-p.sy)*e, e, .4+.6*e, alpha);
+    }
+    numberLabel(Math.min(1,t*2));
+  }
+  else if(el<FL+A+HOLD){
+    for(const p of ps){
+      const sh=reduceMotion?0:Math.sin(now*.002+p.jit)*.5;
+      drawMP(p, p.tx+sh, p.ty+sh*.6, 1, 1, alpha);
+    }
+    numberLabel(1);
+  }
+  else if(el<FL+A+HOLD+D){
+    /* 粒子が石垣へ吸い込まれていく */
+    const t=(el-FL-A-HOLD)/D;
+    for(const p of ps){
+      let u=(t-p.delay)/(1-.45);
+      if(u<=0){ drawMP(p,p.tx,p.ty,1,1,alpha); continue; }
+      if(u>=1) continue;
+      const e=easeInC(Math.min(1,u)), it=1-e;
+      const x=it*it*p.tx + 2*it*e*p.cpx + e*e*gx;
+      const y=it*it*p.ty + 2*it*e*p.cpy + e*e*gy;
+      drawMP(p, x, y, 1-e*.85, 1-e*.5, alpha);
+    }
+    numberLabel(1-t);
+  }
+  else if(el<FL+A+HOLD+D+F){
+    /* 石垣が光る */
+    const k=(el-FL-A-HOLD-D)/F;
+    const flare=Math.sin(Math.PI*Math.min(1,k*1.15));
+    const fg=ctx.createRadialGradient(gx,gy,0,gx,gy,40+130*flare);
+    fg.addColorStop(0,`rgba(255,228,175,${.95*flare*alpha})`);
+    fg.addColorStop(.35,`rgba(240,190,120,${.35*flare*alpha})`);
+    fg.addColorStop(1,'rgba(240,190,120,0)');
+    ctx.fillStyle=fg;
+    ctx.beginPath();ctx.arc(gx,gy,180,0,7);ctx.fill();
+    for(let i=0;i<3;i++){
+      const r=k*1.25-i*.18;
+      if(r>0&&r<1){
+        ctx.beginPath();ctx.arc(gx,gy,r*190,0,7);
+        ctx.strokeStyle=`rgba(240,196,128,${.5*(1-r)*alpha})`;
+        ctx.lineWidth=1.2;ctx.stroke();
+      }
+    }
+  }
+  else{
+    const t=Math.min(1,(el-FL-A-HOLD-D-F)/M);
+    const a2=t<.25?t/.25:(t>.8?(1-t)/.2:1);
+    ctx.textAlign='center';
+    ctx.font=`${Math.min(W,H)*.032}px Georgia,"Hiragino Mincho ProN","Yu Mincho",serif`;
+    ctx.fillStyle=`rgba(224,214,192,${.9*a2*alpha})`;
+    ctx.fillText('あなたの石垣が、星座に加わりました。', W/2, H*.47);
+    ctx.font=`italic ${Math.min(W,H)*.020}px Georgia,serif`;
+    ctx.fillStyle=`rgba(182,166,132,${.82*a2*alpha})`;
+    ctx.fillText('Your Ishigaki has joined the constellation.', W/2, H*.52);
+    ctx.textAlign='left';
+  }
+
+  /* 波紋 */
+  mripples=mripples.filter(r=>now-r.t<1800);
+  for(const r of mripples){
+    const k=(now-r.t)/1800;
+    ctx.beginPath();ctx.arc(gx,gy,4+k*38,0,7);
+    ctx.strokeStyle=`rgba(240,190,120,${.45*(1-k)*alpha})`;
+    ctx.lineWidth=1.1;ctx.stroke();
+  }
+  ctx.globalAlpha=1;
+}
+function drawMP(p,x,y,alpha,scale,sceneA){
+  ctx.beginPath();
+  ctx.arc(x,y,p.size*scale,0,7);
+  ctx.fillStyle=`rgba(${p.col},${p.alpha*alpha*sceneA})`;
+  ctx.fill();
+}
+
+function frame(now){
+  ctx.clearRect(0,0,W,H);
+
+  /* シーンを壁時計から決定 → 複数台が自動的に同期する */
+  let p=Date.now()%CYCLE, name=SCENES[0][0], dur=SCENES[0][1], el=p;
+  for(const s of SCENES){
+    if(el<s[1]){ name=s[0]; dur=s[1]; break; }
+    el-=s[1];
+  }
+  mode=name; curEl=el; curDur=dur;
+  const a=SCENES.length===1 ? 1
+        : Math.max(0, Math.min(1, el/1200, (dur-el)/1200));
+
+  if(name==='flight') drawFlightScene(now,a);
+  else if(name==='map') drawMapScene(now,a,Math.min(1,el/2500));
+  else if(name==='memory') drawMemoryScene(now,a,el,dur);
+  else drawJoinScene(now,a);
+
+  requestAnimationFrame(frame);
+}
+
+/* ---------- 初期化 ---------- */
+function resize(){
+  DPR=Math.min(2,devicePixelRatio||1);
+  W=innerWidth; H=innerHeight;
+  cv.width=W*DPR; cv.height=H*DPR;
+  cv.style.width=W+'px'; cv.style.height=H+'px';
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  /* 地図を正しい縦横比で中央に収める */
+  MW=Math.min(W*.96, H*.9*MAP_AR);
+  MH=MW/MAP_AR;
+  MX=(W-MW)/2; MY=(H-MH)/2 - H*.02;
+  buildDots();
+  pilgrims.forEach(p=>{}); // 位置は再投影しないが実害なし(デモ)
+}
+addEventListener('resize',resize);
+resize();
+
+/* ---------- 実データ取得(8秒ごとにGASをポーリング) ---------- */
+let lastMemCyc=-1, activeMemory=null;
+const MEMORY_KEEP=3;    /* 直近何人分の写真を回すか(1にすると常に最新の1人だけ) */
+let memoryQueue=[];     /* 新着写真(最優先で1回再生) */
+let recentMemories=[];  /* 直近MEMORY_KEEP人分のローテーション */
+let lastNo=0, feedSeeded=false, feedFails=0;
+
+async function pollFeed(){
+  const hintEl=document.getElementById('hint');
+  try{
+    const res=await fetch(FEED_URL+'?after='+lastNo);
+    const j=await res.json();
+    feedFails=0;
+
+    /* 旗の集計を実データで丸ごと置き換え */
+    const nc={};
+    for(const [origin,v] of Object.entries(j.totals||{})){
+      const [lo,la]=coordOf(origin, v.country);
+      nc[origin]={cc:CC_MAP[v.country]||'XX', lon:lo, lat:la, n:v.count};
+    }
+    counts=nc;
+    if(typeof j.latest==='number' && j.latest>=total){
+      total=j.latest;
+      countEl.textContent=fmtCount(total);
+    }
+
+    if(!feedSeeded){
+      /* 初回:過去の巡礼者を星として一括点灯し、
+         承認済み写真は再生キューへ(フライトはさせない) */
+      feedSeeded=true;
+      for(const [,v] of Object.entries(nc)){
+        const m=Math.min(v.n,6);
+        for(let i=0;i<m;i++){
+          const [px,py]=proj(v.lon,v.lat);
+          pilgrims.push({x:wrapX(px+(Math.random()-.5)*10),
+                         y:py+(Math.random()-.5)*10,
+                         born:performance.now(), kind:'guest'});
+        }
+      }
+      const withPhotos=(j.entries||[]).filter(en=>en.photo).slice(-MEMORY_KEEP);
+      for(const en of withPhotos){
+        const img=new Image();
+        img.onload=()=>{
+          recentMemories.push({no:en.no, origin:en.origin,
+                               country:en.country, ps:buildPhotoParticles(img)});
+          while(recentMemories.length>MEMORY_KEEP) recentMemories.shift();
+        };
+        img.src=en.photo;
+      }
+      lastNo=j.latest||0;
+    }else{
+      /* 新着:光を飛ばし、写真があれば再生キューへ */
+      for(const en of (j.entries||[])){
+        if(en.no<=lastNo) continue;
+        lastNo=Math.max(lastNo,en.no);
+        const [lo,la]=coordOf(en.origin, en.country);
+        spawnFlightAt(lo,la, en.kind||'visitor', en.origin, en.no,
+                      CC_MAP[en.country]||'XX');
+        if(en.photo){
+          const img=new Image();
+          img.onload=()=>{
+            memoryQueue.push({no:en.no, origin:en.origin,
+                              country:en.country, ps:buildPhotoParticles(img)});
+            while(memoryQueue.length>MEMORY_KEEP) memoryQueue.shift();
+          };
+          img.src=en.photo;
+        }
+      }
+    }
+  }catch(e){
+    /* 通信断でも映像は止めない(プレビュー環境等では案内を表示) */
+    feedFails++;
+    if(feedFails>=2 && !feedSeeded){
+      hintEl.textContent='通信できません — このファイルをダウンロードし、ブラウザで直接開いてください';
+      hintEl.style.opacity=.9;
+      hintEl.style.color='#e8b86d';
+    }
+  }
+  setTimeout(pollFeed, 8000);
+}
+
+/* 開業以来の累積を疑似シード(2割強は参加者=銀) */
+if(!USE_FEED){
+  for(let i=0;i<38;i++){
+    addPilgrim(cityBag[Math.floor(Math.random()*cityBag.length)],
+               Math.random()<.25?'visitor':'guest');
+  }
+}
+
+/* 描画ループ起動 */
+requestAnimationFrame(frame);
+
+/* 疑似フライトは ?demo=1 のときのみ / 実運用はフィード駆動 */
+function loop(){
+  if(mode==='flight' && (SCENES.length===1 || curDur-curEl>6000)) spawnFlight();
+  setTimeout(loop, 4000+Math.random()*4000);
+}
+
+/* 残響:これまでの巡礼者の記録から、光の航跡を静かに再現し続ける */
+function echoLoop(){
+  if(mode==='flight' && flights.length<3){
+    const keys=Object.keys(counts);
+    if(keys.length){
+      const bag=[];
+      keys.forEach(k=>{
+        const m=Math.min(counts[k].n,10);
+        for(let i=0;i<m;i++) bag.push(k);
+      });
+      const k=bag[Math.floor(Math.random()*bag.length)];
+      const v=counts[k];
+      spawnFlightAt(v.lon,v.lat,'guest',k,null,v.cc);
+    }
+  }
+  setTimeout(echoLoop, 5000+Math.random()*5000);
+}
+
+if(USE_FEED){ pollFeed(); setTimeout(echoLoop,2500); }
+else { setTimeout(loop,1200); }
+
+/* モード適用 */
+if(MINIMAL) countEl.style.display='none';
+document.getElementById('hint').textContent =
+  `${USE_FEED?'LIVE · 実データ接続':'DEMO · 疑似データ'} · クリックで全画面 · MODE: ${MODE.toUpperCase()}`;
+
+/* 写真追加(memoryシーンを持つモードのみ表示) */
+const addBtn=document.getElementById('addPhoto');
+const fileIn=document.getElementById('file');
+if(!SCENES.some(s=>s[0]==='memory')) addBtn.style.display='none';
+addBtn.addEventListener('click',e=>{ e.stopPropagation(); fileIn.click(); });
+fileIn.addEventListener('change',async e=>{
+  for(const f of e.target.files) await addPhotoFile(f);
+  fileIn.value='';
+});
+fileIn.addEventListener('click',e=>e.stopPropagation());
+
+/* 全画面 */
+document.body.addEventListener('click',()=>{
+  const el=document.documentElement;
+  if(!document.fullscreenElement && el.requestFullscreen) el.requestFullscreen();
+  document.getElementById('hint').style.opacity=0;
+});
+</script>
+</body>
+</html>
