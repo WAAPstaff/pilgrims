@@ -88,7 +88,9 @@ const cityBag = [];
 CITIES.forEach((c,i)=>{ for(let k=0;k<c[3];k++) cityBag.push(i); });
 
 /* ---------- フォームの出発地 → 座標・国旗 ---------- */
-const CC_MAP={'日本':'JP','台湾':'TW','香港':'HK','韓国':'KR','中国':'CN','シンガポール':'SG','タイ':'TH','オーストラリア':'AU','アメリカ':'US','イギリス':'GB','フランス':'FR','ドイツ':'DE'};
+const CC_MAP={'日本':'JP','台湾':'TW','香港':'HK','韓国':'KR','中国':'CN','シンガポール':'SG','タイ':'TH','オーストラリア':'AU','アメリカ':'US','イギリス':'GB','フランス':'FR','ドイツ':'DE',
+'マレーシア':'MY','インドネシア':'ID','フィリピン':'PH','ベトナム':'VN','インド':'IN','ニュージーランド':'NZ','カナダ':'CA',
+'イタリア':'IT','スペイン':'ES','オランダ':'NL','アイルランド':'IE','ポルトガル':'PT','ベルギー':'BE','スイス':'CH','オーストリア':'AT','スウェーデン':'SE','ノルウェー':'NO','デンマーク':'DK','フィンランド':'FI','ポーランド':'PL','チェコ':'CZ'};
 const PREF_COORDS={
 '北海道':[141.35,43.06],'青森県':[140.74,40.82],'岩手県':[141.15,39.70],'宮城県':[140.87,38.27],
 '秋田県':[140.10,39.72],'山形県':[140.36,38.24],'福島県':[140.47,37.75],'茨城県':[140.45,36.34],
@@ -107,6 +109,17 @@ const COUNTRY_COORDS={
 '中国':[116.40,39.90],'シンガポール':[103.82,1.35],'タイ':[100.50,13.76],
 'オーストラリア':[151.21,-33.87],'アメリカ':[-98.00,38.50],'イギリス':[-1.50,52.50],
 'フランス':[2.35,48.86],'ドイツ':[10.45,51.16],'その他':[152.0,8.0],
+/* 東南アジア・南アジア */
+'マレーシア':[101.69,3.14],'インドネシア':[106.85,-6.21],'フィリピン':[120.98,14.60],
+'ベトナム':[105.85,21.03],'インド':[77.21,28.61],
+/* オセアニア・北米 */
+'ニュージーランド':[174.78,-41.29],'カナダ':[-79.38,43.65],
+/* ヨーロッパ */
+'イタリア':[12.50,41.90],'スペイン':[-3.70,40.42],'オランダ':[4.90,52.37],
+'アイルランド':[-6.26,53.35],'ポルトガル':[-9.14,38.72],'ベルギー':[4.35,50.85],
+'スイス':[7.45,46.95],'オーストリア':[16.37,48.21],'スウェーデン':[18.07,59.33],
+'ノルウェー':[10.75,59.91],'デンマーク':[12.57,55.68],'フィンランド':[24.94,60.17],
+'ポーランド':[21.01,52.23],'チェコ':[14.44,50.08],
 /* 台湾 */
 '台北':[121.56,25.03],'新北':[121.46,25.01],'桃園':[121.30,24.99],
 '台中':[120.68,24.14],'台南':[120.21,23.00],'高雄':[120.30,22.62],'その他(台湾)':[120.97,23.70],
@@ -233,6 +246,46 @@ function makeFlag(cc){
     case 'GB': R(0,0,w,h,'#012169'); uj(g,0,0,w,h); break;
     case 'FR': R(0,0,w/3,h,'#0055a4'); R(w/3,0,w/3,h,'#fff'); R(w*2/3,0,w/3,h,'#ef4135'); break;
     case 'DE': R(0,0,w,h/3,'#000'); R(0,h/3,w,h/3,'#dd0000'); R(0,h*2/3,w,h/3,'#ffce00'); break;
+    /* 東南アジア・南アジア */
+    case 'MY': R(0,0,w,h,'#cc0001');
+      for(let i=1;i<14;i+=2) R(0,i*h/14,w,h/14,'#fff');
+      R(0,0,w*.5,h*7/14,'#010066');
+      g.fillStyle='#ffcc00'; g.beginPath(); g.arc(w*.22,h*.25,h*.11,0,7); g.fill();
+      g.fillStyle='#010066'; g.beginPath(); g.arc(w*.26,h*.25,h*.09,0,7); g.fill();
+      g.fillStyle='#ffcc00'; star(g,w*.34,h*.25,h*.07); break;
+    case 'ID': R(0,0,w,h/2,'#ce1126'); R(0,h/2,w,h/2,'#fff'); break;
+    case 'PH': R(0,0,w,h/2,'#0038a8'); R(0,h/2,w,h/2,'#ce1126');
+      g.fillStyle='#fff'; g.beginPath(); g.moveTo(0,0); g.lineTo(w*.4,h/2); g.lineTo(0,h); g.closePath(); g.fill();
+      g.fillStyle='#fcd116'; star(g,w*.10,h*.5,h*.09); break;
+    case 'VN': R(0,0,w,h,'#da251d'); g.fillStyle='#ff0'; star(g,w/2,h/2,h*.28); break;
+    case 'IN': R(0,0,w,h/3,'#ff9933'); R(0,h/3,w,h/3,'#fff'); R(0,h*2/3,w,h/3,'#138808');
+      g.strokeStyle='#000080'; g.lineWidth=1.5; g.beginPath(); g.arc(w/2,h/2,h*.13,0,7); g.stroke(); break;
+    /* オセアニア・北米 */
+    case 'NZ': R(0,0,w,h,'#00247d'); R(0,0,w/2,h/2,'#00247d'); uj(g,0,0,w/2,h/2);
+      g.fillStyle='#cc142b'; star(g,w*.75,h*.28,h*.06); star(g,w*.83,h*.5,h*.07); star(g,w*.7,h*.6,h*.05); star(g,w*.8,h*.75,h*.06); break;
+    case 'CA': R(0,0,w/4,h,'#d80621'); R(w*3/4,0,w/4,h,'#d80621'); R(w/4,0,w/2,h,'#fff');
+      g.fillStyle='#d80621'; g.font=`${h*.6}px serif`; g.textAlign='center'; g.textBaseline='middle'; g.fillText('\u{1F341}',w/2,h*.52); break;
+    /* ヨーロッパ */
+    case 'IT': R(0,0,w/3,h,'#009246'); R(w/3,0,w/3,h,'#fff'); R(w*2/3,0,w/3,h,'#ce2b37'); break;
+    case 'ES': R(0,0,w,h,'#c60b1e'); R(0,h/4,w,h/2,'#ffc400'); break;
+    case 'NL': R(0,0,w,h/3,'#21468b'); R(0,h/3,w,h/3,'#fff'); R(0,h*2/3,w,h/3,'#ae1c28');
+      /* NLは上赤下青が正だが視認優先で簡略 */
+      R(0,0,w,h/3,'#ae1c28'); R(0,h*2/3,w,h/3,'#21468b'); break;
+    case 'IE': R(0,0,w/3,h,'#169b62'); R(w/3,0,w/3,h,'#fff'); R(w*2/3,0,w/3,h,'#ff883e'); break;
+    case 'PT': R(0,0,w*.4,h,'#006600'); R(w*.4,0,w*.6,h,'#ff0000');
+      g.fillStyle='#ffff00'; g.beginPath(); g.arc(w*.4,h/2,h*.16,0,7); g.stroke(); break;
+    case 'BE': R(0,0,w/3,h,'#000'); R(w/3,0,w/3,h,'#fdda24'); R(w*2/3,0,w/3,h,'#ef3340'); break;
+    case 'CH': R(0,0,w,h,'#d52b1e');
+      g.fillStyle='#fff'; R(w*.42,h*.22,w*.16,h*.56,'#fff'); R(w*.28,h*.42,w*.44,h*.16,'#fff'); break;
+    case 'AT': R(0,0,w,h/3,'#ed2939'); R(0,h/3,w,h/3,'#fff'); R(0,h*2/3,w,h/3,'#ed2939'); break;
+    case 'SE': R(0,0,w,h,'#006aa7'); R(w*.28,0,w*.14,h,'#fecc00'); R(0,h*.42,w,h*.16,'#fecc00'); break;
+    case 'NO': R(0,0,w,h,'#ba0c2f'); R(w*.28,0,w*.14,h,'#fff'); R(0,h*.42,w,h*.16,'#fff');
+      R(w*.31,0,w*.08,h,'#00205b'); R(0,h*.46,w,h*.08,'#00205b'); break;
+    case 'DK': R(0,0,w,h,'#c8102e'); R(w*.28,0,w*.12,h,'#fff'); R(0,h*.44,w,h*.12,'#fff'); break;
+    case 'FI': R(0,0,w,h,'#fff'); R(w*.28,0,w*.12,h,'#003580'); R(0,h*.44,w,h*.12,'#003580'); break;
+    case 'PL': R(0,0,w,h/2,'#fff'); R(0,h/2,w,h/2,'#dc143c'); break;
+    case 'CZ': R(0,0,w,h/2,'#fff'); R(0,h/2,w,h/2,'#d7141a');
+      g.fillStyle='#11457e'; g.beginPath(); g.moveTo(0,0); g.lineTo(w*.5,h/2); g.lineTo(0,h); g.closePath(); g.fill(); break;
     default: R(0,0,w,h,'#888');
   }
   g.strokeStyle='rgba(0,0,0,.35)'; g.lineWidth=2; g.strokeRect(1,1,w-2,h-2);
@@ -336,10 +389,10 @@ try{
 
 /* ---------- シーン管理(時計基準・全端末同期) ---------- */
 const SCENE_SETS={
-  default:    [['flight',45000],['memory',20000],['map',20000],['join',14000]],
+  default:    [['flight',45000],['memory',30000],['map',20000],['join',14000]],
   reception:  [['flight',60000],['map',20000]],
   bar:        [['flight',600000]],
-  restaurant: [['flight',30000],['memory',20000],['map',18000],['join',18000]]
+  restaurant: [['flight',30000],['memory',30000],['map',18000],['join',18000]]
 };
 const SCENES=SCENE_SETS[MODE]||SCENE_SETS.default;
 const CYCLE=SCENES.reduce((s,x)=>s+x[1],0);
@@ -773,9 +826,13 @@ function drawMemoryScene(now,alpha,el,dur){
   }
   const demoNo='PILGRIM  No.'+String(memNo).padStart(4,'0')+'  —  '+memOrigin;
 
-  /* タイムライン:光が飛来 → 着地から写真が花開く → 静止 → 石垣へ吸収 → 閃光 → 一文 */
+  /* タイムライン:光が飛来 → 着地から写真が花開く → 静止 → 石垣へ吸収 → 閃光 → 一文 → 過去3人のギャラリー */
   const FL=3400, A=2400, D=4200, F=2200, M=2000;
-  const HOLD=Math.max(1800, dur-FL-A-D-F-M-400);
+  const GALLERY_EACH=2600; /* 過去1枚あたりの表示時間 */
+  /* ギャラリー対象:activeMemory以外の直近メモリ(最大3) */
+  const galleryItems=recentMemories.filter(m=>m!==activeMemory).slice(-3);
+  const G=galleryItems.length*GALLERY_EACH;
+  const HOLD=Math.max(1800, dur-FL-A-D-F-M-G-400);
 
   const numberLabel=(a2)=>{
     /* 粒子写真の下に巡礼者ナンバー(お客様が自分のものと分かる) */
@@ -868,7 +925,7 @@ function drawMemoryScene(now,alpha,el,dur){
       }
     }
   }
-  else{
+  else if(el<FL+A+HOLD+D+F+M){
     const t=Math.min(1,(el-FL-A-HOLD-D-F)/M);
     const a2=t<.25?t/.25:(t>.8?(1-t)/.2:1);
     ctx.textAlign='center';
@@ -878,6 +935,30 @@ function drawMemoryScene(now,alpha,el,dur){
     ctx.font=`italic ${Math.min(W,H)*.020}px Georgia,serif`;
     ctx.fillStyle=`rgba(182,166,132,${.82*a2*alpha})`;
     ctx.fillText('Your Ishigaki has joined the constellation.', W/2, H*.52);
+    ctx.textAlign='left';
+  }
+  else if(galleryItems.length){
+    /* 過去3人のギャラリー:1枚ずつ浮かんで消える */
+    const gel=el-FL-A-HOLD-D-F-M;
+    const idx=Math.min(galleryItems.length-1, Math.floor(gel/GALLERY_EACH));
+    const local=(gel-idx*GALLERY_EACH)/GALLERY_EACH; /* 0..1 */
+    const gm=galleryItems[idx];
+    /* フェードイン→保持→フェードアウト */
+    const fa = local<.18 ? local/.18 : (local>.78 ? (1-local)/.22 : 1);
+    /* 小見出し */
+    ctx.textAlign='center';
+    ctx.font=`${Math.min(W,H)*.017}px Georgia,serif`;
+    ctx.fillStyle=`rgba(150,165,176,${.6*fa*alpha})`;
+    ctx.fillText('これまでの巡礼者たち / Fellow pilgrims', W/2, H*.13);
+    /* 写真をハーフトーンで中央に静止表示(集合済みの位置=tx,ty) */
+    for(const p of gm.ps){
+      drawMP(p, p.tx, p.ty, fa, 1, alpha);
+    }
+    /* No.と出発地 */
+    ctx.textAlign='center';
+    ctx.font=`${Math.max(11,Math.min(W,H)*.022)}px Georgia,serif`;
+    ctx.fillStyle=`rgba(232,196,130,${.85*fa*alpha})`;
+    ctx.fillText('PILGRIM  No.'+String(gm.no).padStart(4,'0')+'  —  '+gm.origin, W*.40, H*.88);
     ctx.textAlign='left';
   }
 
