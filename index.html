@@ -1158,6 +1158,41 @@ document.body.addEventListener('click',()=>{
   if(!document.fullscreenElement && el.requestFullscreen) el.requestFullscreen();
   document.getElementById('hint').style.opacity=0;
 });
+
+/* ===== スリープ防止 (Fire TV 常設用) ===== */
+/* 1) Screen Wake Lock API: 画面を眠らせない */
+let _wakeLock=null;
+async function requestWakeLock(){
+  try{
+    if('wakeLock' in navigator){
+      _wakeLock=await navigator.wakeLock.request('screen');
+      _wakeLock.addEventListener('release',()=>{ setTimeout(requestWakeLock,3000); });
+    }
+  }catch(e){}
+}
+requestWakeLock();
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible') requestWakeLock();
+});
+
+/* 2) 隠しビデオ再生: canvasの映像を1fpsでビデオとして再生し続け、
+      システムに「動画再生中」と認識させてスクリーンセーバーを抑止 */
+(function(){
+  try{
+    const src=document.getElementById('cv');
+    if(!src || !src.captureStream) return;
+    const v=document.createElement('video');
+    v.muted=true; v.setAttribute('muted','');
+    v.setAttribute('playsinline',''); v.autoplay=true;
+    v.style.cssText='position:fixed;left:0;bottom:0;width:2px;height:2px;opacity:0.01;pointer-events:none;z-index:-1';
+    document.body.appendChild(v);
+    v.srcObject=src.captureStream(1);
+    const tryPlay=()=>v.play().catch(()=>{});
+    tryPlay();
+    document.addEventListener('click',tryPlay,{once:false});
+    setInterval(()=>{ if(v.paused) tryPlay(); },10000);
+  }catch(e){}
+})();
 </script>
 </body>
 </html>
